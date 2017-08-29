@@ -1,7 +1,10 @@
+import os
 from os.path import exists
 from random import choice
 from threading import Thread
 from time import sleep
+
+from multiprocessing import Process, cpu_count, managers
 
 from DataBase.OperateDB import InitDB
 from Spider import GoodsSpider, SellerSpider, ListSpider
@@ -40,18 +43,21 @@ def GetData():
 def GetIP():
     while not exists("./completed.txt"):
         getips()
-        sleep(180) #三分钟取一次IP
+        sleep(120) #三分钟取一次IP
 
 
 if __name__ == '__main__':
 
     InitDB()
+    if os.path.exists("completed.txt"):
+        os.rename("completed.txt")
+    GetIP()
 
     ip_thread = Thread(target=GetIP)
     data_thread = Thread(target=GetData)
 
-    ip_thread.start()
     data_thread.start()
+    ip_thread.start()
 
-    ip_thread.join()
     data_thread.join()
+    ip_thread.join()

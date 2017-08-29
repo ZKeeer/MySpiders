@@ -117,7 +117,7 @@ def getips():
 
     #获取秘密代理
     url_content = GetPageContent(url_mimi)
-    tmp_ip_list = findall(r"<tr>\s+<td>[\d\.]+</td>\s+<td>\d+</td>", url_content)
+    tmp_ip_list = findall(r"<tr>\s+<td>([\d\.]+)</td>\s+<td>(\d+)</td>", url_content)
     for item in tmp_ip_list:
         ip_list.append("{}:{}".format(item[0], item[1]))
 
