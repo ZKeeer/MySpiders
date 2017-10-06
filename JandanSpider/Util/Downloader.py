@@ -11,7 +11,7 @@ primary_level = "./DownLoad/"
 second_level = "./DownLoad/Image/"
 
 
-def page_downloader(tar_url, host=None):
+def page_downloader(tar_url, Referer=None, host=None):
     url_content = ""
     try:
         url_content = requests.get(tar_url,
