@@ -4,11 +4,11 @@ from random import choice
 from threading import Thread
 from time import sleep
 
-from multiprocessing import Process, cpu_count, managers
-
 from DataBase.OperateDB import InitDB
-from Spider import GoodsSpider, SellerSpider, ListSpider
+from Spider import GoodsSpider, ListSpider
 from Spider.GetIPProxy import getips
+
+from XianyuSpider.Spider import SellerSpider
 
 
 # https://s.2.taobao.com/list/list.htm?spm=2007.1000337.0.0.609c25ca0hst7I&catid=50100424&st_trust=1&start=0&end=50&page=4&ist=0

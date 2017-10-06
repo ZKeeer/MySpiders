@@ -2,17 +2,18 @@ import random
 import re
 import time
 import traceback
-from .GetIPProxy import GetIpToUse
+
 import requests
 
-from DataBase import OperateDB
+from XianyuSpider.DataBase import OperateDB
+from .GetIPProxy import GetIpToUse
 
-def GetPageContent(refer_url, url_seed):
+
+def GetPageContent(url_seed):
     """
-    从指定页面获取html，返回text以供解析
-    :param refer_url: 经由哪个页面跳转过来
-    :param url_seed: 目标页面
-    :return: 目标页面的html文本
+    获取页面内容
+    :param url_seed:网页链接
+    :return:链接页面上的内容
     """
     # 随机获取用户代理
     user_agents = [
@@ -61,8 +62,7 @@ def GetPageContent(refer_url, url_seed):
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
                 'Cache-Control': 'no-cache',
-                'Connection': 'max-age=0',
-                'Referer': refer_url,
+                'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
                 'User-Agent': user_agent
             })
@@ -78,26 +78,97 @@ def GetPageContent(refer_url, url_seed):
     return req.text
 
 
-def GetSellerInfo(refer_url, target_url):
-    page_content = GetPageContent(refer_url, target_url)
+def GetGoodsInfo(url_curr):
+    """
+    解析提取页面内容，写入数据库
+    :param url_curr:网页的html内容
+    :return:该页面上卖家的“更多闲置”链接
+    """
+    goods_info = []
+    url_content = GetPageContent(url_curr)
+    lt = time.localtime()
+    # 获取提取页面的时间
+    current_time = lt.tm_year.__str__() \
+                   + lt.tm_mon.__str__() \
+                   + lt.tm_mday.__str__() \
+                   + "-" \
+                   + lt.tm_hour.__str__() \
+                   + lt.tm_min.__str__() \
+                   + lt.tm_sec.__str__()
 
-    seller, goods_num = re.search(r"卖家(.*)\(<em class=\"cur-num\">(.*)</em>\)", page_content).group(1,2)
-    region = re.findall(r"location\">(.*)</div>", page_content)
-    goods = re.findall(r"<div class=\"item-brief-desc\">(.*)</div>", page_content)
+    if re.findall(r"亲.你太潮了.闲鱼.淘宝二手里暂时还找不到你搜索的东西呢", url_content):
+        print("This page is empty. {}".format(url_curr))
+        return []
 
-    regions = ""
-    for item in region:
-        regions += "{}####".format(item)
-    if not regions:
-        print("当前链接未获取到地区：{}".format(target_url))
+    # 1.获取页面上商品名
+    names = re.findall(r"<h4 class=\"item-title\"><a target=\"_blank\" href=\"(.*)\">(.*)</a>", url_content)
+    # 2.获取简短的商品描述
+    descriptions = re.findall(r"<div class=\"item-description\">(.*)</div>", url_content)
+    # 3.获取页面上发布时间，如果是几小时/分钟/天前，转换成标准的2017/08/04  对应年月日
+    times = re.findall(r"<span class=\"item-pub-time\">(.*?)</span>", url_content)
+    # 4.获取页面上商品价格
+    prices = re.findall(r"<span class=\"price\"><b>&yen</b><em>([\d\.]*)</em>", url_content)
+    # 5.获取商品留言数
+    comments = re.findall(r"留言<em class=\"number\">(\d*)</em>", url_content)
+    # 6.获取页面上卖家名字
+    sellers = re.findall(r"data-nick=\"(.*?)\"", url_content)
+    # 7.获取页面上卖家地区
+    regions = re.findall(r"<div class=\"seller-location\">(.*?)</div>", url_content)
+    # 8.获取页面上卖家等级
+    vips = re.findall(r"<span class=\"sh-user-vip .*\">vip(\d*)</span>", url_content)
+    # 9.获取卖家闲置物品链接
+    things_link = re.findall(r"<a href=\"(.*)\" class=\"number\" target=\"_blank\">该卖家更多闲置</a>", url_content)
+    # 10.获取商品ID
+    ids = re.findall(r"<a target=\"_blank\" href=\"//2\.taobao\.com/item\.htm\?id=(.*)\"><img", url_content)
 
-    description = ''
-    if goods:
-        for item in goods:
-            description += "{}####".format(item)
+    # 标准化时间2017/08/21
+    t_time = []
+    for item in times:
+        if "分钟" in item or "小时" in item:
+            year = str(time.localtime().tm_year)
+            mon = str(time.localtime().tm_mon)
+            if mon.__len__() == 1:
+                mon = "0{}".format(mon)
+            day = str(time.localtime().tm_mday)
+            if day.__len__() == 1:
+                day = "0{}".format(day)
+            t_time.append("{}/{}/{}".format(year, mon, day))
+        elif "天" in item:
+            gap_day = int(re.findall(r"(\d*)天前", item)[0])
+            year = str(time.localtime().tm_year)
+            mon = str(time.localtime().tm_mon)
+            if mon.__len__() == 1:
+                mon = "0{}".format(mon)
+            day = time.localtime().tm_mday
+            day = str(day - gap_day)
+            if day.__len__() == 1:
+                day = "0{}".format(day)
+            t_time.append("{}/{}/{}".format(year, mon, day))
+        else:
+            t_time.append(item.replace(".", "/"))
+    times = t_time
 
-    seller_info = {"seller": seller, "goods_num": int(goods_num), "region": regions, "description": description}
+    # 分离商品名称和链接，给商品连接加上https:
+    goods_link = []
+    goods_name = []
+    for item in names:
+        goods_link.append("https:{}".format(item[0]))
+        goods_name.append(item[1])
 
-    OperateDB.WriteIntoSellers(seller_info)
+    # 给更多闲置的IP地址加上https:
+    t_things_link = []
+    for item in things_link:
+        t_things_link.append("https:{}".format(item))
+    things_link = t_things_link
 
+    # 构造字典列表并返回
+    for n, l, d, t, p, c, s, r, v, gid in zip(goods_name, goods_link, descriptions, times, prices, comments, sellers,
+                                              regions, vips,
+                                              ids):
+        goods_info.append(
+            {"name": n, "description": d, "time": t, "price": float(p), "comment": int(c), "seller": s, "region": r,
+             "vip": int(v), "current_time": current_time, "link": l, "id": gid})
 
+    OperateDB.WriteIntoGoods(goods_info)
+
+    return things_link
